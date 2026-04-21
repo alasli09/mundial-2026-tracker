@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mundial 2026 Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 48 48" aria-label="Logo Mundial 2026 Tracker" class="logo" fill="none">
+        <rect x="6" y="6" width="36" height="36" rx="10" stroke="currentColor" stroke-width="3"/>
+        <path d="M15 30L21 18L27 30L33 18" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <h1>Mundial 2026 Tracker</h1>
+        <p>Grupos, clasificación general y bracket interactivo</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button id="themeToggle" class="icon-btn" aria-label="Cambiar tema">◐</button>
+      <button id="exportBtn" class="btn secondary">Exportar JSON</button>
+      <label class="btn secondary file-btn">Importar JSON<input id="importInput" type="file" accept="application/json" hidden></label>
+    </div>
+  </header>
+
+  <main id="main" class="app-shell">
+    <aside class="sidebar">
+      <nav class="nav" aria-label="Secciones">
+        <button class="nav-btn active" data-view="grupos">Grupos</button>
+        <button class="nav-btn" data-view="clasificacion">Clasificación</button>
+        <button class="nav-btn" data-view="bracket">Bracket</button>
+        <button class="nav-btn" data-view="json">JSON</button>
+      </nav>
+      <section class="panel">
+        <h2>Cómo usar</h2>
+        <ul>
+          <li>Alterna entre vista por grupos y cronológica.</li>
+          <li>Las tablas se ordenan automáticamente con criterios FIFA 2026.</li>
+          <li>La clasificación general muestra colores por 1°, 2° y 3°.</li>
+          <li>El bracket toma clasificados automáticos; tú pones marcadores y penales si hay empate.</li>
+          <li>Exporta e importa JSON para guardar tu progreso en GitHub Pages.</li>
+        </ul>
+      </section>
+    </aside>
+
+    <section class="content">
+      <div id="status" class="status">Listo.</div>
+      <section id="view-grupos" class="view active"></section>
+      <section id="view-clasificacion" class="view"></section>
+      <section id="view-bracket" class="view"></section>
+      <section id="view-json" class="view"><div class="panel"><h2>Estado JSON</h2><pre id="jsonOutput"></pre></div></section>
+    </section>
+  </main>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
