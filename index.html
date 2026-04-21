@@ -24,8 +24,6 @@
     </div>
     <div class="topbar-actions">
       <button id="themeToggle" class="icon-btn" aria-label="Cambiar tema">◐</button>
-      <button id="exportBtn" class="btn secondary">Exportar JSON</button>
-      <label class="btn secondary file-btn">Importar JSON<input id="importInput" type="file" accept="application/json" hidden></label>
     </div>
   </header>
 
@@ -35,7 +33,6 @@
         <button class="nav-btn active" data-view="grupos">Grupos</button>
         <button class="nav-btn" data-view="clasificacion">Clasificación</button>
         <button class="nav-btn" data-view="bracket">Bracket</button>
-        <button class="nav-btn" data-view="json">JSON</button>
       </nav>
       <section class="panel">
         <h2>Cómo usar</h2>
@@ -43,8 +40,9 @@
           <li>Alterna entre vista por grupos y cronológica.</li>
           <li>Las tablas se ordenan automáticamente con criterios FIFA 2026.</li>
           <li>La clasificación general muestra colores por 1°, 2° y 3°.</li>
-          <li>El bracket toma clasificados automáticos; tú pones marcadores y penales si hay empate.</li>
-          <li>Exporta e importa JSON para guardar tu progreso en GitHub Pages.</li>
+          <li>El bracket toma clasificados automáticos; llena penales si hay empate en eliminatorias.</li>
+          <li>Usa "Simular pendientes" para rellenar partidos vacíos con marcadores aleatorios.</li>
+          <li>El progreso se guarda automáticamente en la nube.</li>
         </ul>
       </section>
     </aside>
@@ -54,7 +52,6 @@
       <section id="view-grupos" class="view active"></section>
       <section id="view-clasificacion" class="view"></section>
       <section id="view-bracket" class="view"></section>
-      <section id="view-json" class="view"><div class="panel"><h2>Estado JSON</h2><pre id="jsonOutput"></pre></div></section>
     </section>
   </main>
 

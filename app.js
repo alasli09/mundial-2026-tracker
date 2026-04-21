@@ -1,4 +1,27 @@
 
+const SUPABASE_URL = 'https://0ec90b57d6e95fcbda19832f.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJib2x0IiwicmVmIjoiMGVjOTBiNTdkNmU5NWZjYmRhMTk4MzJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg4ODE1NzQsImV4cCI6MTc1ODg4MTU3NH0.9I8-U0x86Ak8t2DGaIk0HfvTSLsAyzdnz-Nw00mMkKw';
+
+const flags = {
+  'México':'🇲🇽','Sudáfrica':'🇿🇦','Corea del Sur':'🇰🇷','Chequia':'🇨🇿',
+  'Canadá':'🇨🇦','Bosnia y Herzegovina':'🇧🇦','Qatar':'🇶🇦','Suiza':'🇨🇭',
+  'Brasil':'🇧🇷','Marruecos':'🇲🇦','Haití':'🇭🇹','Escocia':'🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+  'Estados Unidos':'🇺🇸','Paraguay':'🇵🇾','Australia':'🇦🇺','Turquía':'🇹🇷',
+  'Alemania':'🇩🇪','Curazao':'🇨🇼','Costa de Marfil':'🇨🇮','Ecuador':'🇪🇨',
+  'Países Bajos':'🇳🇱','Japón':'🇯🇵','Suecia':'🇸🇪','Túnez':'🇹🇳',
+  'Bélgica':'🇧🇪','Egipto':'🇪🇬','Irán':'🇮🇷','Nueva Zelanda':'🇳🇿',
+  'España':'🇪🇸','Cabo Verde':'🇨🇻','Arabia Saudita':'🇸🇦','Uruguay':'🇺🇾',
+  'Francia':'🇫🇷','Senegal':'🇸🇳','Irak':'🇮🇶','Noruega':'🇳🇴',
+  'Argentina':'🇦🇷','Argelia':'🇩🇿','Austria':'🇦🇹','Jordania':'🇯🇴',
+  'Portugal':'🇵🇹','RD Congo':'🇨🇩','Uzbekistán':'🇺🇿','Colombia':'🇨🇴',
+  'Inglaterra':'🏴󠁧󠁢󠁥󠁮󠁧󠁿','Croacia':'🇭🇷','Ghana':'🇬🇭','Panamá':'🇵🇦'
+};
+
+function teamName(name){
+  const f = flags[name];
+  return f ? `${name} <span class="flag">${f}</span>` : name;
+}
+
 const groups = {
   A: ["México","Sudáfrica","Corea del Sur","Chequia"],
   B: ["Canadá","Bosnia y Herzegovina","Qatar","Suiza"],
@@ -44,28 +67,70 @@ const fixtures = {
   L:[["Inglaterra","Croacia"],["Ghana","Panamá"],["Inglaterra","Ghana"],["Panamá","Croacia"],["Panamá","Inglaterra"],["Croacia","Ghana"]]
 };
 
-const state = { scores:{}, knockout:{r32:{}, r16:{}, qf:{}, sf:{}, final:{}}, viewMode:'groups', zoom:1 };
+const state = {
+  scores: {},
+  knockout: { r32:{}, r16:{}, qf:{}, sf:{}, final:{} },
+  simulated: {},
+  viewMode: 'groups',
+  zoom: 1
+};
+
 const statusEl = document.getElementById('status');
-const jsonOutput = document.getElementById('jsonOutput');
+let saveTimeout = null;
 
 function setStatus(t){ statusEl.textContent = t; }
-function matchKey(g,i){ return `${g}-${i}`; }
-function koKey(r,i){ return `${r}-${i}`; }
+function matchKey(g, i){ return `${g}-${i}`; }
 function isColombia(t){ return t === 'Colombia'; }
 function fmtDate(d){ const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}); }
 
+function randScore(){
+  return { home: String(Math.floor(Math.random()*4)), away: String(Math.floor(Math.random()*4)) };
+}
+
+function simulateRemaining(){
+  Object.entries(fixtures).forEach(([g, list]) => {
+    list.forEach((_, i) => {
+      const key = matchKey(g, i);
+      const s = state.scores[key];
+      if(s.home === '' && s.away === ''){
+        state.scores[key] = randScore();
+        state.simulated[key] = true;
+      }
+    });
+  });
+  scheduleSave();
+  rerender();
+  setStatus('Simulación aplicada a partidos pendientes.');
+}
+
+function clearSimulated(){
+  Object.keys(state.simulated).forEach(key => {
+    if(state.simulated[key]){
+      state.scores[key] = { home:'', away:'' };
+    }
+  });
+  state.simulated = {};
+  scheduleSave();
+  rerender();
+  setStatus('Simulación limpiada.');
+}
+
 function ensureState(){
   Object.entries(fixtures).forEach(([g, list]) => {
-    list.forEach((_,i) => { if(!state.scores[matchKey(g,i)]) state.scores[matchKey(g,i)] = {home:'', away:''}; });
+    list.forEach((_,i) => {
+      if(!state.scores[matchKey(g,i)]) state.scores[matchKey(g,i)] = {home:'', away:''};
+    });
   });
   ['r32','r16','qf','sf','final'].forEach(round => {
     const n = {r32:16,r16:8,qf:4,sf:2,final:1}[round];
-    for(let i=0;i<n;i++) if(!state.knockout[round][i]) state.knockout[round][i] = {home:'',away:'',homePen:'',awayPen:''};
+    for(let i=0;i<n;i++){
+      if(!state.knockout[round][i]) state.knockout[round][i] = {home:'',away:'',homePen:'',awayPen:''};
+    }
   });
 }
 
 function basicStats(group){
-  const rows = groups[group].map(team => ({team,pj:0,g:0,e:0,p:0,gf:0,gc:0,dif:0,pts:0,fp:0}));
+  const rows = groups[group].map(team => ({team,pj:0,g:0,e:0,p:0,gf:0,gc:0,dif:0,pts:0}));
   const map = Object.fromEntries(rows.map(r=>[r.team,r]));
   fixtures[group].forEach((m,i)=>{
     const s = state.scores[matchKey(group,i)];
@@ -91,10 +156,8 @@ function headToHeadMiniTable(group, tiedTeams){
     if(s.home===''||s.away==='') return;
     const h=Number(s.home), a=Number(s.away);
     const H=map[hTeam], A=map[aTeam];
-    H.gf += h; H.dif += h-a; A.gf += a; A.dif += a-h;
-    if(h>a){ H.pts += 3; }
-    else if(h<a){ A.pts += 3; }
-    else { H.pts += 1; A.pts += 1; }
+    H.gf+=h; H.dif+=h-a; A.gf+=a; A.dif+=a-h;
+    if(h>a){ H.pts+=3; } else if(h<a){ A.pts+=3; } else { H.pts+=1; A.pts+=1; }
   });
   return mini;
 }
@@ -102,7 +165,6 @@ function headToHeadMiniTable(group, tiedTeams){
 function fifaSortGroup(group){
   const rows = basicStats(group);
   rows.sort((a,b)=>b.pts-a.pts || a.team.localeCompare(b.team));
-
   let i=0;
   while(i<rows.length){
     let j=i+1;
@@ -115,9 +177,7 @@ function fifaSortGroup(group){
         (miniMap[b.team].pts-miniMap[a.team].pts) ||
         (miniMap[b.team].dif-miniMap[a.team].dif) ||
         (miniMap[b.team].gf-miniMap[a.team].gf) ||
-        (b.dif-a.dif) ||
-        (b.gf-a.gf) ||
-        a.team.localeCompare(b.team)
+        (b.dif-a.dif)||(b.gf-a.gf)||a.team.localeCompare(b.team)
       ).forEach((r,idx)=> rows[i+idx]=r);
     }
     i=j;
@@ -132,14 +192,16 @@ function allMatchesChronological(){
       out.push({group:g,index:i,home:m[0],away:m[1],date:fixtureMeta[g][i][0],time:fixtureMeta[g][i][1]});
     });
   });
-  out.sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time));
+  out.sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
   return out;
 }
 
 function computeClassification(){
   const all = [];
   Object.keys(groups).forEach(g => fifaSortGroup(g).forEach(r => all.push({...r, group:g})));
-  const bestThird = all.filter(r=>r.pos===3).sort((a,b)=> b.pts-a.pts || b.dif-a.dif || b.gf-a.gf || a.team.localeCompare(b.team)).slice(0,8).map(r=>r.team);
+  const bestThird = all.filter(r=>r.pos===3)
+    .sort((a,b)=>b.pts-a.pts||b.dif-a.dif||b.gf-a.gf||a.team.localeCompare(b.team))
+    .slice(0,8).map(r=>r.team);
   return { all, bestThird };
 }
 
@@ -148,11 +210,23 @@ function renderGroups(){
   const chronological = state.viewMode === 'chrono';
   root.innerHTML = `
     <div class="toolbar">
-      <button class="toggle-btn ${!chronological?'active':''}" data-mode="groups">Ver por grupos</button>
-      <button class="toggle-btn ${chronological?'active':''}" data-mode="chrono">Ver cronológico</button>
+      <div class="toolbar-left">
+        <button class="toggle-btn ${!chronological?'active':''}" data-mode="groups">Ver por grupos</button>
+        <button class="toggle-btn ${chronological?'active':''}" data-mode="chrono">Ver cronológico</button>
+      </div>
+      <div class="toolbar-right">
+        <button id="simulateBtn" class="btn sim-btn">Simular pendientes</button>
+        <button id="clearSimBtn" class="btn secondary">Limpiar simulación</button>
+      </div>
     </div>
     <div id="groupsContainer"></div>`;
-  root.querySelectorAll('.toggle-btn').forEach(btn => btn.addEventListener('click', ()=>{ state.viewMode = btn.dataset.mode; renderGroups(); }));
+
+  root.querySelectorAll('.toggle-btn').forEach(btn => btn.addEventListener('click', ()=>{
+    state.viewMode = btn.dataset.mode; scheduleSave(); renderGroups();
+  }));
+  root.querySelector('#simulateBtn').addEventListener('click', simulateRemaining);
+  root.querySelector('#clearSimBtn').addEventListener('click', clearSimulated);
+
   const container = root.querySelector('#groupsContainer');
 
   if(!chronological){
@@ -168,14 +242,16 @@ function renderGroups(){
           <h4>Partidos</h4>
           <table><thead><tr><th>Fecha</th><th>Local</th><th>GL</th><th>GV</th><th>Visitante</th></tr></thead><tbody>
           ${fixtures[g].map((m,i)=>{
-            const s=state.scores[matchKey(g,i)]; const rowCls=(isColombia(m[0])||isColombia(m[1]))?'colombia':'';
-            return `<tr class="${rowCls}"><td>${fmtDate(fixtureMeta[g][i][0])} ${fixtureMeta[g][i][1]}</td><td class="team-col">${m[0]}</td><td><input class="input-score" type="number" min="0" value="${s.home}" data-group="${g}" data-index="${i}" data-side="home"></td><td><input class="input-score" type="number" min="0" value="${s.away}" data-group="${g}" data-index="${i}" data-side="away"></td><td class="team-col">${m[1]}</td></tr>`;
+            const s=state.scores[matchKey(g,i)];
+            const rowCls=(isColombia(m[0])||isColombia(m[1]))?'colombia':'';
+            const simCls=state.simulated[matchKey(g,i)]?' simulated':'';
+            return `<tr class="${rowCls}${simCls}"><td>${fmtDate(fixtureMeta[g][i][0])} ${fixtureMeta[g][i][1]}</td><td class="team-col">${teamName(m[0])}</td><td><input class="input-score" type="number" min="0" value="${s.home}" data-group="${g}" data-index="${i}" data-side="home"></td><td><input class="input-score" type="number" min="0" value="${s.away}" data-group="${g}" data-index="${i}" data-side="away"></td><td class="team-col">${teamName(m[1])}</td></tr>`;
           }).join('')}</tbody></table>
         </div>
         <div class="table-wrap">
-          <h4>Posiciones reales</h4>
+          <h4>Posiciones</h4>
           <table><thead><tr><th>#</th><th>Equipo</th><th>PTS</th><th>DIF</th><th>GF</th><th>PJ</th></tr></thead><tbody>
-          ${table.map(t=>`<tr class="${isColombia(t.team)?'colombia':''}"><td>${t.pos}</td><td class="team-col">${t.team}</td><td>${t.pts}</td><td>${t.dif}</td><td>${t.gf}</td><td>${t.pj}</td></tr>`).join('')}</tbody></table>
+          ${table.map(t=>`<tr class="${isColombia(t.team)?'colombia':''}"><td>${t.pos}</td><td class="team-col">${teamName(t.team)}</td><td>${t.pts}</td><td>${t.dif}</td><td>${t.gf}</td><td>${t.pj}</td></tr>`).join('')}</tbody></table>
         </div>`;
       grid.appendChild(card);
     });
@@ -188,14 +264,15 @@ function renderGroups(){
       const card = document.createElement('article');
       card.className='match-card';
       const rowCls = (isColombia(item.home)||isColombia(item.away)) ? 'colombia' : '';
+      const simCls = state.simulated[matchKey(item.group,item.index)] ? ' simulated' : '';
       card.innerHTML = `
-        <div class="match-body ${rowCls}">
+        <div class="match-body ${rowCls}${simCls}">
           <div class="meta"><span>Grupo ${item.group}</span><span>${fmtDate(item.date)}</span><span>${item.time}</span></div>
           <div class="match-row">
-            <div class="team-col">${item.home}</div>
+            <div class="team-col">${teamName(item.home)}</div>
             <input class="input-score" type="number" min="0" value="${s.home}" data-group="${item.group}" data-index="${item.index}" data-side="home">
             <input class="input-score" type="number" min="0" value="${s.away}" data-group="${item.group}" data-index="${item.index}" data-side="away">
-            <div class="team-col">${item.away}</div>
+            <div class="team-col">${teamName(item.away)}</div>
           </div>
         </div>`;
       listEl.appendChild(card);
@@ -204,7 +281,10 @@ function renderGroups(){
 
   root.querySelectorAll('.input-score').forEach(input=>input.addEventListener('input', e=>{
     const {group,index,side}=e.target.dataset;
-    state.scores[matchKey(group,index)][side]=e.target.value;
+    const key = matchKey(group,index);
+    state.scores[key][side]=e.target.value;
+    delete state.simulated[key];
+    scheduleSave();
     rerender();
   }));
 }
@@ -212,7 +292,7 @@ function renderGroups(){
 function renderClassification(){
   const root = document.getElementById('view-clasificacion');
   const { all, bestThird } = computeClassification();
-  const ordered = [...all].sort((a,b)=> b.pts-a.pts || b.dif-a.dif || b.gf-a.gf || a.group.localeCompare(b.group) || a.pos-b.pos);
+  const ordered = [...all].sort((a,b)=>b.pts-a.pts||b.dif-a.dif||b.gf-a.gf||a.group.localeCompare(b.group)||a.pos-b.pos);
   root.innerHTML = `
     <div class="panel">
       <h2>Clasificación general</h2>
@@ -226,8 +306,8 @@ function renderClassification(){
         <thead><tr><th>Grp</th><th>Pos</th><th>Equipo</th><th>PTS</th><th>DIF</th><th>GF</th><th>PJ</th></tr></thead>
         <tbody>
           ${ordered.map(r=>{
-            const cls = [r.pos===1?'pos-1':'', r.pos===2?'pos-2':'', r.pos===3?'pos-3':'', (r.pos===3 && bestThird.includes(r.team))?'best-third':'', isColombia(r.team)?'colombia':''].join(' ');
-            return `<tr class="${cls}"><td>${r.group}</td><td>${r.pos}</td><td class="team-col">${r.team}</td><td>${r.pts}</td><td>${r.dif}</td><td>${r.gf}</td><td>${r.pj}</td></tr>`;
+            const cls=[r.pos===1?'pos-1':'',r.pos===2?'pos-2':'',r.pos===3?'pos-3':'',(r.pos===3&&bestThird.includes(r.team))?'best-third':'',isColombia(r.team)?'colombia':''].join(' ');
+            return `<tr class="${cls}"><td>${r.group}</td><td>${r.pos}</td><td class="team-col">${teamName(r.team)}</td><td>${r.pts}</td><td>${r.dif}</td><td>${r.gf}</td><td>${r.pj}</td></tr>`;
           }).join('')}
         </tbody>
       </table>
@@ -239,7 +319,7 @@ function buildQualifiedTeams(){
   Object.keys(groups).forEach(g => byGroup[g] = fifaSortGroup(g));
   const { bestThird } = computeClassification();
   return {
-    first: Object.fromEntries(Object.keys(byGroup).map(g=>[g,byGroup[g][0]?.team||`1${g}`])),
+    first:  Object.fromEntries(Object.keys(byGroup).map(g=>[g,byGroup[g][0]?.team||`1${g}`])),
     second: Object.fromEntries(Object.keys(byGroup).map(g=>[g,byGroup[g][1]?.team||`2${g}`])),
     bestThird
   };
@@ -261,9 +341,9 @@ function renderMatchBox(title, round, i, home, away){
   return `
     <div class="bracket-match">
       <h4>${title}</h4>
-      <div class="team-slot"><span class="name">${home}</span><span class="score-pair"><input class="input-score ko-score" type="number" min="0" value="${s.home}" data-round="${round}" data-index="${i}" data-side="home"><input class="penalty-score ko-score" type="number" min="0" value="${s.homePen}" data-round="${round}" data-index="${i}" data-side="homePen" placeholder="P"></span></div>
-      <div class="team-slot"><span class="name">${away}</span><span class="score-pair"><input class="input-score ko-score" type="number" min="0" value="${s.away}" data-round="${round}" data-index="${i}" data-side="away"><input class="penalty-score ko-score" type="number" min="0" value="${s.awayPen}" data-round="${round}" data-index="${i}" data-side="awayPen" placeholder="P"></span></div>
-      <div class="winner-line">Ganador: <strong>${winner || 'Por definir'}</strong></div>
+      <div class="team-slot"><span class="name">${teamName(home)}</span><span class="score-pair"><input class="input-score ko-score" type="number" min="0" value="${s.home}" data-round="${round}" data-index="${i}" data-side="home"><input class="penalty-score ko-score" type="number" min="0" value="${s.homePen}" data-round="${round}" data-index="${i}" data-side="homePen" placeholder="P"></span></div>
+      <div class="team-slot"><span class="name">${teamName(away)}</span><span class="score-pair"><input class="input-score ko-score" type="number" min="0" value="${s.away}" data-round="${round}" data-index="${i}" data-side="away"><input class="penalty-score ko-score" type="number" min="0" value="${s.awayPen}" data-round="${round}" data-index="${i}" data-side="awayPen" placeholder="P"></span></div>
+      <div class="winner-line">Ganador: <strong>${winner ? teamName(winner) : 'Por definir'}</strong></div>
     </div>`;
 }
 
@@ -274,53 +354,160 @@ function renderBracket(){
     [q.first.A, q.second.B],[q.first.C, q.second.D],[q.first.E, q.second.F],[q.first.G, q.second.H],
     [q.first.I, q.second.J],[q.first.K, q.second.L],[q.first.B, q.second.A],[q.first.D, q.second.C],
     [q.first.F, q.second.E],[q.first.H, q.second.G],[q.first.J, q.second.I],[q.first.L, q.second.K],
-    [q.bestThird[0]||'3° mejor 1', q.bestThird[1]||'3° mejor 2'],[q.bestThird[2]||'3° mejor 3', q.bestThird[3]||'3° mejor 4'],
-    [q.bestThird[4]||'3° mejor 5', q.bestThird[5]||'3° mejor 6'],[q.bestThird[6]||'3° mejor 7', q.bestThird[7]||'3° mejor 8']
+    [q.bestThird[0]||'3° mejor 1', q.bestThird[1]||'3° mejor 2'],
+    [q.bestThird[2]||'3° mejor 3', q.bestThird[3]||'3° mejor 4'],
+    [q.bestThird[4]||'3° mejor 5', q.bestThird[5]||'3° mejor 6'],
+    [q.bestThird[6]||'3° mejor 7', q.bestThird[7]||'3° mejor 8']
   ];
-  const r16 = Array.from({length:8}, (_,i)=> [roundWinner('r32',i*2,r32[i*2][0],r32[i*2][1]) || `Ganador R32 ${i*2+1}`, roundWinner('r32',i*2+1,r32[i*2+1][0],r32[i*2+1][1]) || `Ganador R32 ${i*2+2}`]);
-  const qf = Array.from({length:4}, (_,i)=> [roundWinner('r16',i*2,r16[i*2][0],r16[i*2][1]) || `Ganador R16 ${i*2+1}`, roundWinner('r16',i*2+1,r16[i*2+1][0],r16[i*2+1][1]) || `Ganador R16 ${i*2+2}`]);
-  const sf = Array.from({length:2}, (_,i)=> [roundWinner('qf',i*2,qf[i*2][0],qf[i*2][1]) || `Ganador QF ${i*2+1}`, roundWinner('qf',i*2+1,qf[i*2+1][0],qf[i*2+1][1]) || `Ganador QF ${i*2+2}`]);
-  const final = [[roundWinner('sf',0,sf[0][0],sf[0][1]) || 'Ganador SF1', roundWinner('sf',1,sf[1][0],sf[1][1]) || 'Ganador SF2']];
+  const r16 = Array.from({length:8}, (_,i)=>[
+    roundWinner('r32',i*2,r32[i*2][0],r32[i*2][1]) || `Ganador R32 ${i*2+1}`,
+    roundWinner('r32',i*2+1,r32[i*2+1][0],r32[i*2+1][1]) || `Ganador R32 ${i*2+2}`
+  ]);
+  const qf = Array.from({length:4}, (_,i)=>[
+    roundWinner('r16',i*2,r16[i*2][0],r16[i*2][1]) || `Ganador R16 ${i*2+1}`,
+    roundWinner('r16',i*2+1,r16[i*2+1][0],r16[i*2+1][1]) || `Ganador R16 ${i*2+2}`
+  ]);
+  const sf = Array.from({length:2}, (_,i)=>[
+    roundWinner('qf',i*2,qf[i*2][0],qf[i*2][1]) || `Ganador QF ${i*2+1}`,
+    roundWinner('qf',i*2+1,qf[i*2+1][0],qf[i*2+1][1]) || `Ganador QF ${i*2+2}`
+  ]);
+  const final = [[
+    roundWinner('sf',0,sf[0][0],sf[0][1]) || 'Ganador SF1',
+    roundWinner('sf',1,sf[1][0],sf[1][1]) || 'Ganador SF2'
+  ]];
   const champion = roundWinner('final',0,final[0][0],final[0][1]);
+  const zoomPct = Math.round(state.zoom * 100);
 
   root.innerHTML = `
     <div class="bracket-toolbar">
       <div>
-        <h2>Bracket tipo araña</h2>
-        <p class="small">El cuadro toma automáticamente a los clasificados desde los grupos. Si hay empate, llena también penales.</p>
+        <h2>Bracket</h2>
+        <p class="small">Clasificados automáticos desde grupos. Llena penales si hay empate en fase eliminatoria.</p>
       </div>
       <div class="zoom-controls">
-        <button id="zoomOut" class="btn secondary">-</button>
-        <button id="zoomReset" class="btn secondary">100%</button>
-        <button id="zoomIn" class="btn secondary">+</button>
+        <button id="zoomOut" class="btn secondary zoom-btn">−</button>
+        <input id="zoomSlider" type="range" min="40" max="150" step="5" value="${zoomPct}" class="zoom-slider" aria-label="Zoom del bracket">
+        <span id="zoomLabel" class="zoom-label">${zoomPct}%</span>
+        <button id="zoomIn" class="btn secondary zoom-btn">+</button>
+        <button id="zoomReset" class="btn secondary">Reset</button>
       </div>
     </div>
-    <div class="bracket-stage"><div id="bracketCanvas" class="bracket-canvas" style="transform:scale(${state.zoom})">
-      <div class="bracket-grid">
-        <div class="round-col"><div class="round-title">Ronda de 32</div>${r32.map((m,i)=>renderMatchBox(`R32 ${i+1}`,'r32',i,m[0],m[1])).join('')}</div>
-        <div class="round-col"><div class="round-title">Octavos</div>${r16.map((m,i)=>renderMatchBox(`Octavos ${i+1}`,'r16',i,m[0],m[1])).join('')}</div>
-        <div class="round-col"><div class="round-title">Cuartos</div>${qf.map((m,i)=>renderMatchBox(`Cuartos ${i+1}`,'qf',i,m[0],m[1])).join('')}</div>
-        <div class="round-col"><div class="round-title">Semifinales</div>${sf.map((m,i)=>renderMatchBox(`Semifinal ${i+1}`,'sf',i,m[0],m[1])).join('')}</div>
-        <div class="round-col"><div class="round-title">Final</div><div class="final-box">${renderMatchBox('Final','final',0,final[0][0],final[0][1])}<div class="winner-line champion">Campeón: ${champion || 'Por definir'}</div></div></div>
+    <div class="bracket-stage">
+      <div id="bracketCanvas" class="bracket-canvas" style="transform:scale(${state.zoom})">
+        <div class="bracket-grid">
+          <div class="round-col"><div class="round-title">Ronda de 32</div>${r32.map((m,i)=>renderMatchBox(`R32 ${i+1}`,'r32',i,m[0],m[1])).join('')}</div>
+          <div class="round-col"><div class="round-title">Octavos</div>${r16.map((m,i)=>renderMatchBox(`Octavos ${i+1}`,'r16',i,m[0],m[1])).join('')}</div>
+          <div class="round-col"><div class="round-title">Cuartos</div>${qf.map((m,i)=>renderMatchBox(`Cuartos ${i+1}`,'qf',i,m[0],m[1])).join('')}</div>
+          <div class="round-col"><div class="round-title">Semifinales</div>${sf.map((m,i)=>renderMatchBox(`Semifinal ${i+1}`,'sf',i,m[0],m[1])).join('')}</div>
+          <div class="round-col"><div class="round-title">Final</div><div class="final-box">${renderMatchBox('Final','final',0,final[0][0],final[0][1])}<div class="winner-line champion">Campeón: ${champion ? teamName(champion) : 'Por definir'}</div></div></div>
+        </div>
       </div>
-    </div></div>`;
+    </div>`;
 
   root.querySelectorAll('.ko-score').forEach(input=>input.addEventListener('input', e=>{
     const {round,index,side}=e.target.dataset;
     state.knockout[round][index][side]=e.target.value;
+    scheduleSave();
     rerender();
   }));
-  document.getElementById('zoomIn').onclick = ()=>{ state.zoom = Math.min(2, +(state.zoom + 0.1).toFixed(2)); renderBracket(); };
-  document.getElementById('zoomOut').onclick = ()=>{ state.zoom = Math.max(0.5, +(state.zoom - 0.1).toFixed(2)); renderBracket(); };
-  document.getElementById('zoomReset').onclick = ()=>{ state.zoom = 1; renderBracket(); };
+
+  function applyZoom(val){
+    state.zoom = val;
+    const canvas = document.getElementById('bracketCanvas');
+    if(canvas) canvas.style.transform = `scale(${val})`;
+    const label = document.getElementById('zoomLabel');
+    if(label) label.textContent = `${Math.round(val*100)}%`;
+    const slider = document.getElementById('zoomSlider');
+    if(slider) slider.value = Math.round(val*100);
+    scheduleSave();
+  }
+
+  document.getElementById('zoomIn').onclick = ()=> applyZoom(Math.min(1.5, +(state.zoom+0.1).toFixed(2)));
+  document.getElementById('zoomOut').onclick = ()=> applyZoom(Math.max(0.4, +(state.zoom-0.1).toFixed(2)));
+  document.getElementById('zoomReset').onclick = ()=> applyZoom(1);
+  document.getElementById('zoomSlider').oninput = e => applyZoom(Number(e.target.value)/100);
 }
 
-function renderJSON(){ jsonOutput.textContent = JSON.stringify({state, classification: computeClassification()}, null, 2); }
-function rerender(){ renderGroups(); renderClassification(); renderBracket(); renderJSON(); setStatus('Actualizado automáticamente.'); }
+function rerender(){ renderGroups(); renderClassification(); renderBracket(); }
 
-function downloadJSON(){ const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='mundial2026-state.json'; a.click(); URL.revokeObjectURL(a.href); }
-function importJSON(file){ const r=new FileReader(); r.onload=()=>{ try{ const data=JSON.parse(r.result); if(data.scores) state.scores=data.scores; if(data.knockout) state.knockout=data.knockout; if(data.viewMode) state.viewMode=data.viewMode; if(data.zoom) state.zoom=data.zoom; ensureState(); rerender(); setStatus('JSON importado correctamente.'); }catch(e){ setStatus('Error importando JSON.'); } }; r.readAsText(file); }
-function setupNav(){ document.querySelectorAll('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>{ document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active')); document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); btn.classList.add('active'); document.getElementById(`view-${btn.dataset.view}`).classList.add('active'); })); }
-function setupTheme(){ const root=document.documentElement; const toggle=document.getElementById('themeToggle'); let mode=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'; root.setAttribute('data-theme',mode); toggle.onclick=()=>{ mode=mode==='dark'?'light':'dark'; root.setAttribute('data-theme',mode); }; }
-function init(){ ensureState(); setupNav(); setupTheme(); document.getElementById('exportBtn').onclick=downloadJSON; document.getElementById('importInput').addEventListener('change',e=>{ if(e.target.files[0]) importJSON(e.target.files[0]); }); rerender(); }
+async function saveState(){
+  try {
+    const payload = {
+      id: 'default',
+      scores: state.scores,
+      knockout: state.knockout,
+      simulated: state.simulated,
+      view_mode: state.viewMode,
+      zoom: state.zoom,
+      updated_at: new Date().toISOString()
+    };
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/mundial_state`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify(payload)
+    });
+    if(res.ok) setStatus('Guardado automaticamente.');
+    else setStatus('Error al guardar.');
+  } catch(e){
+    setStatus('Error al guardar.');
+  }
+}
+
+function scheduleSave(){
+  if(saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(saveState, 800);
+}
+
+async function loadState(){
+  try {
+    setStatus('Cargando...');
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/mundial_state?id=eq.default&select=*`, {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+    });
+    const data = await res.json();
+    if(data && data[0]){
+      const row = data[0];
+      if(row.scores && Object.keys(row.scores).length) state.scores = row.scores;
+      if(row.knockout && Object.keys(row.knockout).length) state.knockout = row.knockout;
+      if(row.simulated) state.simulated = row.simulated;
+      if(row.view_mode) state.viewMode = row.view_mode;
+      if(row.zoom) state.zoom = row.zoom;
+    }
+    setStatus('Listo.');
+  } catch(e){
+    setStatus('Error al cargar. Trabajando sin conexión.');
+  }
+}
+
+function setupNav(){
+  document.querySelectorAll('.nav-btn').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`view-${btn.dataset.view}`).classList.add('active');
+  }));
+}
+
+function setupTheme(){
+  const root=document.documentElement;
+  const toggle=document.getElementById('themeToggle');
+  let mode=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  root.setAttribute('data-theme',mode);
+  toggle.onclick=()=>{ mode=mode==='dark'?'light':'dark'; root.setAttribute('data-theme',mode); };
+}
+
+async function init(){
+  ensureState();
+  await loadState();
+  ensureState();
+  setupNav();
+  setupTheme();
+  rerender();
+}
+
 init();
